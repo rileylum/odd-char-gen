@@ -1,0 +1,18 @@
+[Unit]
+Description=ODD Character Generator
+After=network.target
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=/var/www/odd-char-gen
+Environment="PATH=/var/www/odd-char-gen/.venv/bin"
+Environment="ENV=production"
+Environment="PORT=8000"
+ExecStart=/var/www/odd-char-gen/.venv/bin/python main.py
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
