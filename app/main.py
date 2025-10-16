@@ -1,11 +1,12 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Body
 from fastapi.responses import StreamingResponse, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pathlib import Path
+from typing import Optional
 
 from app.pdf_handler import fill_pdf_form, list_form_fields
-from app.utils import generate_six_stats, random_choice, roll_dice
-from app.csv_handler import select_random_row
+from app.utils import generate_six_stats, random_choice, roll_dice, calculate_modifier, generate_equipment
+from app.csv_handler import select_random_row, select_random_rows
 
 app = FastAPI(title="ODD Character Generator")
 
@@ -19,6 +20,7 @@ app.add_middleware(
 
 TEMPLATE_PATH = Path(__file__).parent.parent / "templates" / "charactersheet_fillable.pdf"
 RUMOURS_PATH = Path(__file__).parent.parent / "data" / "rumours.csv"
+SPELLS_PATH = Path(__file__).parent.parent / "data" / "spells.csv"
 
 
 @app.get("/")
@@ -34,8 +36,33 @@ def get_fields():
 
 
 @app.post("/generate-pdf")
-def generate_pdf(field_values: dict[str, str] = {}):
-    stats = generate_six_stats()
+def generate_pdf(
+    stats: Optional[dict[str, int]] = Body(None),
+    character_class: Optional[str] = Body(None, alias="class")
+):
+    if stats:
+        stat_data = {}
+        for stat_name, score in stats.items():
+            stat_data[stat_name] = {
+                'score': score,
+                'modifier': calculate_modifier(score)
+            }
+
+        stat_name_map = {
+            'Strength': 'STR',
+            'Dexterity': 'DEX',
+            'Constitution': 'CON',
+            'Intelligence': 'INT',
+            'Wisdom': 'WIS',
+            'Charisma': 'CHA'
+        }
+
+        stats_internal = {}
+        for full_name, abbrev in stat_name_map.items():
+            if full_name in stat_data:
+                stats_internal[abbrev] = stat_data[full_name]
+    else:
+        stats_internal = generate_six_stats()
 
     stat_mapping = {
         'STR': 'Strength',
@@ -47,14 +74,15 @@ def generate_pdf(field_values: dict[str, str] = {}):
     }
 
     pdf_fields = {}
-    for stat_abbrev, stat_data in stats.items():
+    for stat_abbrev, stat_info in stats_internal.items():
         full_name = stat_mapping[stat_abbrev]
-        pdf_fields[full_name] = str(stat_data['score'])
-        pdf_fields[f"{full_name}Mod"] = str(stat_data['modifier'])
+        pdf_fields[full_name] = str(stat_info['score'])
+        pdf_fields[f"{full_name}Mod"] = str(stat_info['modifier'])
 
-    character_class = random_choice(['Fighter', 'Magic User', 'Thief'])
+    if not character_class:
+        character_class = random_choice(['Fighter', 'Magic User', 'Thief'])
 
-    con_modifier = stats['CON']['modifier']
+    con_modifier = stats_internal['CON']['modifier']
 
     if character_class == 'Fighter':
         hd = 2
@@ -77,6 +105,15 @@ def generate_pdf(field_values: dict[str, str] = {}):
     rumour_row = select_random_row(RUMOURS_PATH)
     rumour = rumour_row.get('rumour', '')
 
+    equipment = generate_equipment(character_class)
+
+    gear_items = []
+    if equipment['armor']:
+        gear_items.append(equipment['armor'])
+    gear_items.append(equipment['weapon1'])
+    if equipment['weapon2']:
+        gear_items.append(equipment['weapon2'])
+
     pdf_fields['Level'] = '1'
     pdf_fields['XP'] = '0'
     pdf_fields['Class'] = character_class
@@ -84,11 +121,26 @@ def generate_pdf(field_values: dict[str, str] = {}):
     pdf_fields['HP'] = str(hp)
     pdf_fields['Save'] = str(save)
     pdf_fields['Notes1'] = rumour
-    pdf_fields['Attack1'] = ''
-    pdf_fields['Defend'] = ''
-    pdf_fields['Attack2'] = ''
+    pdf_fields['Attack1'] = equipment['attack1']
+    pdf_fields['Defend'] = equipment['defend']
+    pdf_fields['Attack2'] = equipment['attack2'] if equipment['attack2'] else ''
+    pdf_fields['Gear1'] = ', '.join(gear_items)
+    pdf_fields['Gear2'] = ''
 
-    pdf_fields.update(field_values)
+    if character_class == 'Thief':
+        pdf_fields['Abilties1'] = 'Thief skills: 2'
+        pdf_fields['Abilities2'] = ''
+    elif character_class == 'Magic User':
+        int_score = stats_internal['INT']['score']
+        spell_rows = select_random_rows(SPELLS_PATH, int_score - 1)
+        spells = [row['spell'] for row in spell_rows]
+        spells.append('Read Magic')
+        spells.sort()
+        pdf_fields['Abilties1'] = 'Known Spells: ' + ', '.join(spells[:8])
+        pdf_fields['Abilities2'] = ', '.join(spells[8:]) if len(spells) > 8 else ''
+    else:
+        pdf_fields['Abilties1'] = ''
+        pdf_fields['Abilities2'] = ''
 
     pdf_output = fill_pdf_form(TEMPLATE_PATH, pdf_fields)
 

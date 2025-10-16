@@ -41,21 +41,149 @@
             margin-top: 1rem;
             color: #666;
         }
+        .section {
+            margin: 2rem 0;
+            padding: 1.5rem;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 1rem;
+            margin: 1rem 0;
+        }
+        .stat-box {
+            padding: 0.5rem;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+        .stat-box label {
+            font-weight: bold;
+            display: block;
+            margin-bottom: 0.25rem;
+        }
+        .stat-value {
+            font-size: 1.5rem;
+            margin: 0.25rem 0;
+        }
+        .stat-modifier {
+            font-size: 1rem;
+            color: #666;
+        }
+        select {
+            padding: 8px;
+            font-size: 16px;
+            border-radius: 4px;
+            border: 1px solid #ccc;
+            margin: 0.5rem 0;
+        }
+        .button-group {
+            margin: 1rem 0;
+        }
+        button + button {
+            margin-left: 0.5rem;
+        }
     </style>
 </head>
 <body>
     <div class="container">
         <h1>ODD Character Generator</h1>
-        <button id="generateBtn" onclick="generatePDF()">Generate Character Sheet</button>
+
+        <div class="section">
+            <h2>Quick Generate</h2>
+            <button id="generateBtn" onclick="generateRandomPDF()">Create Random Character</button>
+        </div>
+
+        <div class="section">
+            <h2>Custom Character</h2>
+
+            <h3>Stats</h3>
+            <div class="stats-grid">
+                <div class="stat-box">
+                    <label>STR</label>
+                    <div class="stat-value" id="str-score">-</div>
+                    <div class="stat-modifier" id="str-mod">-</div>
+                </div>
+                <div class="stat-box">
+                    <label>DEX</label>
+                    <div class="stat-value" id="dex-score">-</div>
+                    <div class="stat-modifier" id="dex-mod">-</div>
+                </div>
+                <div class="stat-box">
+                    <label>CON</label>
+                    <div class="stat-value" id="con-score">-</div>
+                    <div class="stat-modifier" id="con-mod">-</div>
+                </div>
+                <div class="stat-box">
+                    <label>INT</label>
+                    <div class="stat-value" id="int-score">-</div>
+                    <div class="stat-modifier" id="int-mod">-</div>
+                </div>
+                <div class="stat-box">
+                    <label>WIS</label>
+                    <div class="stat-value" id="wis-score">-</div>
+                    <div class="stat-modifier" id="wis-mod">-</div>
+                </div>
+                <div class="stat-box">
+                    <label>CHA</label>
+                    <div class="stat-value" id="cha-score">-</div>
+                    <div class="stat-modifier" id="cha-mod">-</div>
+                </div>
+            </div>
+
+            <div class="button-group">
+                <button onclick="rollAllStats()">Roll Stats</button>
+            </div>
+
+            <h3>Class</h3>
+            <select id="class-select">
+                <option value="">Select Class</option>
+                <option value="Fighter">Fighter</option>
+                <option value="Magic User">Magic User</option>
+                <option value="Thief">Thief</option>
+            </select>
+
+            <div class="button-group">
+                <button onclick="exportCharacter()">Export Character</button>
+            </div>
+        </div>
+
         <div id="status"></div>
     </div>
 
     <script>
-        async function generatePDF() {
-            const btn = document.getElementById('generateBtn');
-            const status = document.getElementById('status');
+        function rollD6() {
+            return Math.floor(Math.random() * 6) + 1;
+        }
 
-            btn.disabled = true;
+        function rollStat() {
+            return rollD6() + 7;
+        }
+
+        function calculateModifier(score) {
+            if (score >= 13) return 1;
+            if (score <= 8) return -1;
+            return 0;
+        }
+
+        function updateStatDisplay(statName, score) {
+            const modifier = calculateModifier(score);
+            document.getElementById(`${statName}-score`).textContent = score;
+            const modText = modifier >= 0 ? `+${modifier}` : modifier;
+            document.getElementById(`${statName}-mod`).textContent = modText;
+        }
+
+        function rollAllStats() {
+            const stats = ['str', 'dex', 'con', 'int', 'wis', 'cha'];
+            stats.forEach(stat => {
+                const score = rollStat();
+                updateStatDisplay(stat, score);
+            });
+        }
+
+        async function generatePDF(characterData = {}) {
+            const status = document.getElementById('status');
             status.textContent = 'Generating PDF...';
 
             try {
@@ -64,7 +192,7 @@
                     headers: {
                         'Content-Type': 'application/json',
                     },
-                    body: JSON.stringify({})
+                    body: JSON.stringify(characterData)
                 });
 
                 if (!response.ok) {
@@ -84,9 +212,51 @@
                 status.textContent = 'PDF downloaded successfully!';
             } catch (error) {
                 status.textContent = 'Error: ' + error.message;
-            } finally {
-                btn.disabled = false;
             }
+        }
+
+        async function generateRandomPDF() {
+            const btn = document.getElementById('generateBtn');
+            btn.disabled = true;
+            await generatePDF({});
+            btn.disabled = false;
+        }
+
+        async function exportCharacter() {
+            const status = document.getElementById('status');
+
+            const strScore = document.getElementById('str-score').textContent;
+            const dexScore = document.getElementById('dex-score').textContent;
+            const conScore = document.getElementById('con-score').textContent;
+            const intScore = document.getElementById('int-score').textContent;
+            const wisScore = document.getElementById('wis-score').textContent;
+            const chaScore = document.getElementById('cha-score').textContent;
+
+            if (strScore === '-' || dexScore === '-' || conScore === '-' ||
+                intScore === '-' || wisScore === '-' || chaScore === '-') {
+                status.textContent = 'Please roll stats first!';
+                return;
+            }
+
+            const selectedClass = document.getElementById('class-select').value;
+            if (!selectedClass) {
+                status.textContent = 'Please select a class!';
+                return;
+            }
+
+            const characterData = {
+                stats: {
+                    Strength: parseInt(strScore),
+                    Dexterity: parseInt(dexScore),
+                    Constitution: parseInt(conScore),
+                    Intelligence: parseInt(intScore),
+                    Wisdom: parseInt(wisScore),
+                    Charisma: parseInt(chaScore)
+                },
+                class: selectedClass
+            };
+
+            await generatePDF(characterData);
         }
     </script>
 </body>
