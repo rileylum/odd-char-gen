@@ -21,6 +21,7 @@ app.add_middleware(
 TEMPLATE_PATH = Path(__file__).parent.parent / "templates" / "charactersheet_fillable.pdf"
 RUMOURS_PATH = Path(__file__).parent.parent / "data" / "rumours.csv"
 SPELLS_PATH = Path(__file__).parent.parent / "data" / "spells.csv"
+ADVENTURING_GEAR_PATH = Path(__file__).parent.parent / "data" / "adventuring_gear.csv"
 
 
 @app.get("/")
@@ -114,6 +115,25 @@ def generate_pdf(
     if equipment['weapon2']:
         gear_items.append(equipment['weapon2'])
 
+    gear_items.extend(['3 torches', 'waterskin', 'tinderbox'])
+
+    gold = sum(roll_dice(3, 6))
+    gear_items.append(f'{gold} gp')
+
+    wis_modifier = stats_internal['WIS']['modifier']
+    num_adventuring_items = max(0, 3 + wis_modifier)
+    adventuring_gear_rows = select_random_rows(ADVENTURING_GEAR_PATH, num_adventuring_items)
+    adventuring_gear = [row['item'] for row in adventuring_gear_rows]
+
+    if character_class == 'Fighter':
+        adventuring_gear.append('Potion of Healing')
+    elif character_class == 'Magic User':
+        scroll_spell = select_random_row(SPELLS_PATH)
+        adventuring_gear.append(f"Spell Scroll ({scroll_spell['spell']})")
+    elif character_class == 'Thief':
+        extra_gear = select_random_row(ADVENTURING_GEAR_PATH)
+        adventuring_gear.append(extra_gear['item'])
+
     pdf_fields['Level'] = '1'
     pdf_fields['XP'] = '0'
     pdf_fields['Class'] = character_class
@@ -125,7 +145,7 @@ def generate_pdf(
     pdf_fields['Defend'] = equipment['defend']
     pdf_fields['Attack2'] = equipment['attack2'] if equipment['attack2'] else ''
     pdf_fields['Gear1'] = ', '.join(gear_items)
-    pdf_fields['Gear2'] = ''
+    pdf_fields['Gear2'] = ', '.join(adventuring_gear)
 
     if character_class == 'Thief':
         pdf_fields['Abilties1'] = 'Thief skills: 2'
